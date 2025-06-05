@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AES-256 Encryption Tool</title>
+<style>
+  :root {
+    --primary-color: #5a67d8;
+    --primary-color-light: #7f9cf5;
+    --background-color: #f7fafc;
+    --text-color: #2d3748;
+    --card-bg: #ffffff;
+    --border-radius: 12px;
+    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background: var(--background-color);
+    font-family: var(--font-family);
+    color: var(--text-color);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1rem;
+  }
+  .container {
+    background: var(--card-bg);
+    max-width: 480px;
+    width: 100%;
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 25px rgba(90, 103, 216, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  h1 {
+    margin: 0 0 0.5rem 0;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-align: center;
+  }
+  label {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    display: block;
+  }
+  input[type="file"] {
+    border: 2px dashed var(--primary-color-light);
+    border-radius: var(--border-radius);
+    padding: 0.75rem;
+    width: 100%;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+  }
+  input[type="file"]:focus,
+  input[type="file"]:hover {
+    border-color: var(--primary-color);
+    outline: none;
+  }
+  input[type="password"] {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    border-radius: var(--border-radius);
+    border: 2px solid var(--primary-color-light);
+    transition: border-color 0.3s ease;
+  }
+  input[type="password"]:focus {
+    border-color: var(--primary-color);
+    outline: none;
+  }
+  .button-group {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  button {
+    flex: 1;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    border-radius: var(--border-radius);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  button:hover:not(:disabled) {
+    background: var(--primary-color-light);
+  }
+  button:disabled {
+    background: #a3a3b8;
+    cursor: not-allowed;
+  }
+  .status {
+    min-height: 1.5rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  a.download-link {
+    margin-top: 0.75rem;
+    text-align: center;
+    color: var(--primary-color);
+    font-weight: 700;
+    text-decoration: none;
+    display: block;
+  }
+  a.download-link:hover {
+    text-decoration: underline;
+  }
+  footer {
+    margin-top: 2rem;
+    font-size: 0.875rem;
+    color: #718096;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="container" role="main">
+    <h1>AES-256 Encryption Tool</h1>
+    <label for="fileInput">Choose file to encrypt/decrypt</label>
+    <input type="file" id="fileInput" aria-describedby="fileHelp" />
+    <label for="passwordInput">Enter password</label>
+    <input type="password" id="passwordInput" placeholder="Password" aria-describedby="passwordHelp" />
+
+    <div class="button-group">
+      <button id="encryptBtn" disabled>Encrypt</button>
+      <button id="decryptBtn" disabled>Decrypt</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <a href="#" id="downloadLink" class="download-link" hidden download>Download Result</a>
+
+    <footer>
+      &copy; 2024 Advanced Encryption Tool
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const fileInput = document.getElementById('fileInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const encryptBtn = document.getElementById('encryptBtn');
+  const decryptBtn = document.getElementById('decryptBtn');
+  const status = document.getElementById('status');
+  const downloadLink = document.getElementById('downloadLink');
+
+  let fileBuffer = null;
+  let fileName = '';
+
+  // Enable or disable buttons based on input presence
+  function updateButtons() {
+    const hasFile = fileInput.files.length > 0;
+    const hasPassword = passwordInput.value.length > 0;
+    encryptBtn.disabled = !(hasFile && hasPassword);
+    decryptBtn.disabled = !(hasFile && hasPassword);
+  }
+
+  fileInput.addEventListener('change', async () => {
+    status.textContent = '';
+    downloadLink.hidden = true;
+    if (fileInput.files.length === 0) {
+      fileBuffer = null;
+      fileName = '';
+      updateButtons();
+      return;
+    }
+    const file = fileInput.files[0];
+    fileName = file.name;
+    try {
+      fileBuffer = await file.arrayBuffer();
+      updateButtons();
+    } catch (e) {
+      status.textContent = 'Failed to read file.';
+      fileBuffer = null;
+      updateButtons();
+    }
+  });
+
+  passwordInput.addEventListener('input', () => {
+    updateButtons();
+  });
+
+  // Utility: Encode utf8 string to Uint8Array
+  function encodeUTF8(str) {
+    return new TextEncoder().encode(str);
+  }
+
+  // Utility: Decode utf8 Uint8Array to string
+  function decodeUTF8(buf) {
+    return new TextDecoder().decode(buf);
+  }
+
+  // Generate a cryptographic key from password using PBKDF2
+  async function deriveKey(password, salt) {
+    const passKey = await window.crypto.subtle.importKey(
+      'raw',
+      encodeUTF8(password),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+    return window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 250000,
+        hash: 'SHA-256',
+      },
+      passKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  // Concatenate Uint8Arrays
+  function concatBuffers(...buffers) {
+    let totalLength = buffers.reduce((acc, curr) => acc + curr.byteLength, 0);
+    let temp = new Uint8Array(totalLength);
+    let offset = 0;
+    for (let buf of buffers) {
+      temp.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    }
+    return temp.buffer;
+  }
+
+  // Encrypt function
+  async function encryptFile() {
+    status.textContent = 'Encrypting...';
+    downloadLink.hidden = true;
+    try {
+      if (!fileBuffer) throw new Error('No file data loaded.');
+      const password = passwordInput.value;
+      const salt = window.crypto.getRandomValues(new Uint8Array(16));
+      const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 12 bytes for AES-GCM
+
+      const key = await deriveKey(password, salt);
+
+      const encryptedContent = await window.crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv
+        },
+        key,
+        fileBuffer
+      );
+      // Format of output file: [salt (16)][iv (12)][encrypted data]
+      const combinedBuffer = concatBuffers(salt.buffer, iv.buffer, encryptedContent);
+
+      const blob = new Blob([combinedBuffer], { type: 'application/octet-stream' });
+      const encryptedFileName = `${fileName}.aes256`;
+
+      const url = URL.createObjectURL(blob);
+      downloadLink.href = url;
+      downloadLink.download = encryptedFileName;
+      downloadLink.textContent = `Download Encrypted File (${encryptedFileName})`;
+      downloadLink.hidden = false;
+
+      status.textContent = 'Encryption successful.';
+    } catch (err) {
+      status.textContent = 'Encryption failed: ' + err.message;
+    }
+  }
+
+  // Decrypt function
+  async function decryptFile() {
+    status.textContent = 'Decrypting...';
+    downloadLink.hidden = true;
+    try {
+      if (!fileBuffer) throw new Error('No file data loaded.');
+      if (!(fileBuffer.byteLength > 16 + 12)) {
+        throw new Error('File too small or not a valid encrypted file.');
+      }
+      const password = passwordInput.value;
+      const buffer = new Uint8Array(fileBuffer);
+
+      // Extract salt, iv, encrypted content
+      const salt = buffer.slice(0, 16);
+      const iv = buffer.slice(16, 28);
+      const encryptedContent = buffer.slice(28);
+
+      const key = await deriveKey(password, salt);
+
+      const decryptedContent = await window.crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv
+        },
+        key,
+        encryptedContent
+      );
+
+      const blob = new Blob([decryptedContent]);
+      // Remove .aes256 extension if present
+      let decryptedFileName = fileName;
+      if (decryptedFileName.endsWith('.aes256')) {
+        decryptedFileName = decryptedFileName.slice(0, -7);
+      } else {
+        decryptedFileName = 'decrypted_' + decryptedFileName;
+      }
+      const url = URL.createObjectURL(blob);
+      downloadLink.href = url;
+      downloadLink.download = decryptedFileName;
+      downloadLink.textContent = `Download Decrypted File (${decryptedFileName})`;
+      downloadLink.hidden = false;
+
+      status.textContent = 'Decryption successful.';
+    } catch (err) {
+      status.textContent = 'Decryption failed: ' + err.message;
+    }
+  }
+
+  encryptBtn.addEventListener('click', async () => {
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = true;
+    await encryptFile();
+    updateButtons();
+  });
+
+  decryptBtn.addEventListener('click', async () => {
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = true;
+    await decryptFile();
+    updateButtons();
+  });
+})();
+</script>
+</body>
+</html>
+
